@@ -15,51 +15,58 @@ namespace Consumer
     {
         private readonly ILogger<Worker> _logger;
         private readonly int _intervaloMensagemWorkerAtivo;
-        private readonly ParametrosExecucao _parametrosExecucao;
 
         public Worker(ILogger<Worker> logger,
-            IConfiguration configuration,
-            ParametrosExecucao parametrosExecucao)
+            IConfiguration configuration)
         {
-            logger.LogInformation(
-                $"Queue = {parametrosExecucao.Queue}");
 
             _logger = logger;
             _intervaloMensagemWorkerAtivo =
                 Convert.ToInt32(configuration["IntervaloMensagemWorkerAtivo"]);
-            _parametrosExecucao = parametrosExecucao;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation(
-                "Aguardando mensagens...");
+                $"{DateTime.Now} - Aguardando mensagens...");
 
             var factory = new ConnectionFactory()
             {
-                Uri = new Uri(_parametrosExecucao.ConnectionString)
+                HostName = "localhost"
             };
+
+            
             using var connection = factory.CreateConnection();
             using var channel = connection.CreateModel();
 
-            channel.QueueDeclare(queue: _parametrosExecucao.Queue,
+            channel.QueueDeclare(queue: "queue",
                                 durable: false,
                                 exclusive: false,
                                 autoDelete: false,
                                 arguments: null);
 
             var consumer = new EventingBasicConsumer(channel);
-            consumer.Received += Consumer_Received;
-            channel.BasicConsume(queue: _parametrosExecucao.Queue,
-                autoAck: true,
-                consumer: consumer);
 
-            while (!stoppingToken.IsCancellationRequested)
+            consumer.Received += (model, ea) =>
             {
-                _logger.LogInformation(
-                    $"Worker ativo em: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                await Task.Delay(_intervaloMensagemWorkerAtivo, stoppingToken);
-            }
+                var body = ea.Body.ToArray();
+                var message = Encoding.UTF8.GetString(body);
+                Console.WriteLine($" [x] Mensagem recebida: {message}");
+            };
+
+            channel.BasicConsume(queue: "queue",
+                                 autoAck: true,
+                                 consumer: consumer);
+
+            Console.WriteLine(" Pressione ENTER to exit.");
+            Console.ReadLine();
+
+            //while (!stoppingToken.IsCancellationRequested)
+            //{
+            //_logger.LogInformation(
+            //    $"Worker ativo em: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            //await Task.Delay(_intervaloMensagemWorkerAtivo, stoppingToken);
+            //}
         }
 
         private void Consumer_Received(
